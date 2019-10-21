@@ -17,7 +17,7 @@
 
 
 import base64
-import cStringIO
+from io import BytesIO
 import sys
 import tempfile
 
@@ -37,7 +37,9 @@ import numpy as np
 from PIL import Image
 from PIL import ImageDraw
 import tensorflow as tf
-from utils import label_map_util
+#from utils import label_map_util
+from object_detection.utils import label_map_util
+from object_detection.utils import visualization_utils as vis_util
 from werkzeug.datastructures import CombinedMultiDict
 from wtforms import Form
 from wtforms import ValidationError
@@ -76,12 +78,11 @@ class PhotoForm(Form):
       'File extension should be: %s (case-insensitive)' % ', '.join(extensions),
       validators=[is_image()])
 
-
 class ObjectDetector(object):
 
   def __init__(self):
     self.detection_graph = self._build_graph()
-    self.sess = tf.Session(graph=self.detection_graph)
+    self.sess = tf.compat.v1.Session(graph=self.detection_graph)
 
     label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
     categories = label_map_util.convert_label_map_to_categories(
@@ -91,8 +92,8 @@ class ObjectDetector(object):
   def _build_graph(self):
     detection_graph = tf.Graph()
     with detection_graph.as_default():
-      od_graph_def = tf.GraphDef()
-      with tf.gfile.GFile(PATH_TO_CKPT, 'rb') as fid:
+      od_graph_def = tf.compat.v1.GraphDef()
+      with tf.io.gfile.GFile(PATH_TO_CKPT, 'rb') as fid:
         serialized_graph = fid.read()
         od_graph_def.ParseFromString(serialized_graph)
         tf.import_graph_def(od_graph_def, name='')
@@ -106,23 +107,22 @@ class ObjectDetector(object):
 
   def detect(self, image):
     image_np = self._load_image_into_numpy_array(image)
-    image_np_expanded = np.expand_dims(image_np, axis=0)
+    import requests
+    import time
 
-    graph = self.detection_graph
-    image_tensor = graph.get_tensor_by_name('image_tensor:0')
-    boxes = graph.get_tensor_by_name('detection_boxes:0')
-    scores = graph.get_tensor_by_name('detection_scores:0')
-    classes = graph.get_tensor_by_name('detection_classes:0')
-    num_detections = graph.get_tensor_by_name('num_detections:0')
-
-    (boxes, scores, classes, num_detections) = self.sess.run(
-        [boxes, scores, classes, num_detections],
-        feed_dict={image_tensor: image_np_expanded})
-
-    boxes, scores, classes, num_detections = map(
-        np.squeeze, [boxes, scores, classes, num_detections])
-
-    return boxes, scores, classes.astype(int), num_detections
+    payload = {"instances": [image_np.tolist()]}
+    start = time.perf_counter()
+    res = requests.post("http://localhost:8080/v1/models/default:predict", json=payload)
+    print(f"Took {time.perf_counter()-start:.2f}s")
+    graph = res.json()['predictions'][0]
+    boxes = graph['detection_boxes']#get_tensor_by_name('detection_boxes:0')
+    scores = graph['detection_scores']#.get_tensor_by_name('detection_scores:0')
+    classes = graph['detection_classes']#.get_tensor_by_name('detection_classes:0')
+    num_detections = graph['num_detections']#.get_tensor_by_name('num_detections:0')
+    num =  num_detections
+    for i in range(0, len(classes)):
+        classes[i] = int(classes[i])
+    return boxes, scores, classes, num
 
 
 def draw_bounding_box_on_image(image, box, color='red', thickness=4):
@@ -136,10 +136,10 @@ def draw_bounding_box_on_image(image, box, color='red', thickness=4):
 
 
 def encode_image(image):
-  image_buffer = cStringIO.StringIO()
+  image_buffer = BytesIO()
   image.save(image_buffer, format='PNG')
-  imgstr = 'data:image/png;base64,{:s}'.format(
-      base64.b64encode(image_buffer.getvalue()))
+  imgstr = base64.b64encode(image_buffer.getvalue()).decode()
+  imgstr = 'data:image/png;base64,{:s}'.format(imgstr)
   return imgstr
 
 
@@ -147,9 +147,8 @@ def detect_objects(image_path):
   image = Image.open(image_path).convert('RGB')
   boxes, scores, classes, num_detections = client.detect(image)
   image.thumbnail((480, 480), Image.ANTIALIAS)
-
   new_images = {}
-  for i in range(num_detections):
+  for i in range(int(num_detections)):
     if scores[i] < 0.7: continue
     cls = classes[i]
     if cls not in new_images.keys():
@@ -159,8 +158,7 @@ def detect_objects(image_path):
 
   result = {}
   result['original'] = encode_image(image.copy())
-
-  for cls, new_image in new_images.iteritems():
+  for cls, new_image in new_images.items():
     category = client.category_index[cls]['name']
     result[category] = encode_image(new_image)
 
@@ -193,4 +191,4 @@ client = ObjectDetector()
 
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=80, debug=False)
+  app.run(host='0.0.0.0', port=9013, debug=False)
