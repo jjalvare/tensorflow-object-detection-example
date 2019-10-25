@@ -3,8 +3,13 @@ services:
   web:
     build: .
     depends_on:
-      - object-detect 
+      - object-detect
     ports:
       - "9013:9013"
   object-detect:
-    image: object-detect 
+    build:
+            context: ./tensorflow_serving/
+            dockerfile: Dockerfile
+            args:
+                    model_url: http://download.tensorflow.org/models/object_detection/ssd_resnet50_v1_fpn_shared_box_predictor_640x640_coco14_sync_2018_07_03.tar.gz
+    image: object-detect
