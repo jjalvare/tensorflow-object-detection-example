@@ -1,0 +1,4 @@
+# This file may be used to create an environment using:
+# $ conda create --name <env> --file <this file>
+# platform: linux-ppc64le
+matplotlib=3.1.1=py36h5429711_0
