@@ -1,0 +1,10 @@
+version: "3.3"
+services:
+  web:
+    build: .
+    depends_on:
+      - object-detect 
+    ports:
+      - "9013:9013"
+  object-detect:
+    image: object-detect 

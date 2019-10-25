@@ -36,10 +36,7 @@ from flask_wtf.file import FileField
 import numpy as np
 from PIL import Image
 from PIL import ImageDraw
-import tensorflow as tf
-#from utils import label_map_util
 from object_detection.utils import label_map_util
-from object_detection.utils import visualization_utils as vis_util
 from werkzeug.datastructures import CombinedMultiDict
 from wtforms import Form
 from wtforms import ValidationError
@@ -81,8 +78,6 @@ class PhotoForm(Form):
 class ObjectDetector(object):
 
   def __init__(self):
-    self.detection_graph = self._build_graph()
-    self.sess = tf.compat.v1.Session(graph=self.detection_graph)
 
     label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
     categories = label_map_util.convert_label_map_to_categories(
@@ -112,7 +107,7 @@ class ObjectDetector(object):
 
     payload = {"instances": [image_np.tolist()]}
     start = time.perf_counter()
-    res = requests.post("http://localhost:8080/v1/models/default:predict", json=payload)
+    res = requests.post("http://object-detect:8080/v1/models/default:predict", json=payload)
     print(f"Took {time.perf_counter()-start:.2f}s")
     graph = res.json()['predictions'][0]
     boxes = graph['detection_boxes']#get_tensor_by_name('detection_boxes:0')
